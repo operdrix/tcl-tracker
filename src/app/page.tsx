@@ -96,7 +96,7 @@ export default function Home() {
 
   return (
     <main className="relative">
-      <div className="absolute top-4 right-4 z-10">
+      <div className="absolute top-4 right-20 z-10">
         <button
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           className="bg-white dark:bg-gray-800 p-2 rounded-lg shadow-lg"
