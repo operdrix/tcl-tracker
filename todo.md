@@ -1,0 +1,1 @@
+- Au zoom max, affichage des bouches de métros au lieu des arrêts de métros
