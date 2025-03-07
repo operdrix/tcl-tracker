@@ -1,0 +1,8 @@
+<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="text-clip">
+      <rect width="0" height="0" x="0" y="0" />
+    </clipPath>
+  </defs>
+  <circle cx="12" cy="12" r="10" fill="#4A90E2" />
+</svg> 
