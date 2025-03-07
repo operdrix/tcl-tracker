@@ -85,7 +85,7 @@ export default function Home() {
       });
 
       // Zoomer sur les arrêts avec un peu de marge
-      mapRef.current.fitBounds(bounds, 50);
+      mapRef.current.fitBounds(bounds, 300);
 
       // Fermer l'InfoWindow
       setClusterStops([]);
