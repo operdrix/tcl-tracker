@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  swcMinify: true,
   async rewrites() {
     return [
       {
@@ -10,6 +9,13 @@ const nextConfig = {
       },
     ]
   },
+  webpack: (config) => {
+    // Supprimer l'avertissement de dépréciation
+    config.ignoreWarnings = [
+      { module: /node_modules\/@react-google-maps\/api/ }
+    ];
+    return config;
+  }
 }
 
 module.exports = nextConfig 
