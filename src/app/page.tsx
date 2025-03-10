@@ -41,23 +41,36 @@ export default function Home() {
   const [selectedStop, setSelectedStop] = useState<GrandLyonStop | null>(null);
   const [infoWindowPosition, setInfoWindowPosition] = useState<google.maps.LatLngLiteral | null>(null);
   const [clusterStops, setClusterStops] = useState<GrandLyonStop[]>([]);
+  const [isLoadingVehicles, setIsLoadingVehicles] = useState(true);
+  const [isLoadingLines, setIsLoadingLines] = useState(true);
+  const [isLoadingStops, setIsLoadingStops] = useState(true);
   const mapRef = useRef<google.maps.Map | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
+        setIsLoadingVehicles(true);
+        setIsLoadingLines(true);
+        setIsLoadingStops(true);
+
         const [vehiclesData, linesData] = await Promise.all([
           tclService.getVehicles(),
           tclService.getLines()
         ]);
 
-        const stopsData = await tclService.getStops(linesData);
-
         setVehicles(vehiclesData);
         setLines(linesData);
+        setIsLoadingVehicles(false);
+        setIsLoadingLines(false);
+
+        const stopsData = await tclService.getStops(linesData);
         setStops(stopsData);
+        setIsLoadingStops(false);
       } catch (error) {
         console.error('Erreur lors de la récupération des données:', error);
+        setIsLoadingVehicles(false);
+        setIsLoadingLines(false);
+        setIsLoadingStops(false);
       }
     };
 
@@ -139,7 +152,7 @@ export default function Home() {
           }}
         >
           {/* Affichage des lignes */}
-          {lines.map((line) => (
+          {!isLoadingLines && lines.map((line) => (
             <Polyline
               key={line.code_ligne}
               path={line.coordinates}
@@ -153,7 +166,7 @@ export default function Home() {
           ))}
 
           {/* Affichage des véhicules */}
-          {vehicles.map((vehicle) => (
+          {!isLoadingVehicles && vehicles.map((vehicle) => (
             <Marker
               key={vehicle.id}
               position={vehicle.position}
@@ -166,87 +179,99 @@ export default function Home() {
           ))}
 
           {/* Affichage des arrêts */}
-          <MarkerClusterer
-            options={{
-              imagePath: '/stop-icon.svg',
-              maxZoom: 16,
-              gridSize: 20,
-              styles: [
-                {
-                  textColor: 'transparent',
-                  url: '/stop-icon.svg',
-                  height: 24,
-                  width: 24,
-                  textSize: -1
-                }
-              ],
-              zoomOnClick: false
-            }}
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            onClick={(event: any) => {
-              if (event.markers) {
-                const clusterStops = event.markers.map((marker: google.maps.Marker) =>
-                  stops.find((s: GrandLyonStop) => s.lat === marker.getPosition()?.lat() && s.lon === marker.getPosition()?.lng())
-                ).filter((stop: GrandLyonStop | undefined): stop is GrandLyonStop => stop !== undefined);
+          {!isLoadingStops && (
+            <MarkerClusterer
+              options={{
+                imagePath: '/stop-icon.svg',
+                maxZoom: 16,
+                gridSize: 20,
+                styles: [
+                  {
+                    textColor: 'transparent',
+                    url: '/stop-icon.svg',
+                    height: 24,
+                    width: 24,
+                    textSize: -1
+                  }
+                ],
+                zoomOnClick: false
+              }}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              onClick={(event: any) => {
+                if (event.markers) {
+                  const clusterStops = event.markers.map((marker: google.maps.Marker) =>
+                    stops.find((s: GrandLyonStop) => s.lat === marker.getPosition()?.lat() && s.lon === marker.getPosition()?.lng())
+                  ).filter((stop: GrandLyonStop | undefined): stop is GrandLyonStop => stop !== undefined);
 
-                console.log('Cluster cliqué:', clusterStops);
-                const position = event.getCenter?.() || event.position || event.latLng;
+                  console.log('Cluster cliqué:', clusterStops);
+                  const position = event.getCenter?.() || event.position || event.latLng;
 
-                // Si on clique sur le même cluster, on ferme l'InfoWindow
-                if (position &&
-                  infoWindowPosition &&
-                  position.lat() === infoWindowPosition.lat &&
-                  position.lng() === infoWindowPosition.lng) {
-                  setClusterStops([]);
-                  setSelectedStop(null);
-                  setInfoWindowPosition(null);
-                } else {
-                  setClusterStops(clusterStops);
-                  setSelectedStop(null);
-                  if (position) {
-                    setInfoWindowPosition({
-                      lat: position.lat(),
-                      lng: position.lng()
-                    });
+                  if (position &&
+                    infoWindowPosition &&
+                    position.lat() === infoWindowPosition.lat &&
+                    position.lng() === infoWindowPosition.lng) {
+                    setClusterStops([]);
+                    setSelectedStop(null);
+                    setInfoWindowPosition(null);
+                  } else {
+                    setClusterStops(clusterStops);
+                    setSelectedStop(null);
+                    if (position) {
+                      setInfoWindowPosition({
+                        lat: position.lat(),
+                        lng: position.lng()
+                      });
+                    }
                   }
                 }
-              }
-            }}
-          >
-            {(clusterer) => (
-              <>
-                {stops.map((stop) => (
-                  <Marker
-                    key={`${stop.id}-${stop.desserte.split(',')[0]}`}
-                    position={{ lat: stop.lat, lng: stop.lon }}
-                    onClick={() => {
-                      console.log('Arrêt cliqué:', stop);
-                      // Si on clique sur le même arrêt, on ferme l'InfoWindow
-                      if (selectedStop?.id === stop.id &&
-                        infoWindowPosition &&
-                        infoWindowPosition.lat === stop.lat &&
-                        infoWindowPosition.lng === stop.lon) {
-                        setSelectedStop(null);
-                        setClusterStops([]);
-                        setInfoWindowPosition(null);
-                      } else {
-                        setSelectedStop(stop);
-                        setClusterStops([]);
-                        setInfoWindowPosition({ lat: stop.lat, lng: stop.lon });
-                      }
-                    }}
-                    icon={{
-                      url: '/stop-icon.svg',
-                      scaledSize: new google.maps.Size(24, 24),
-                      anchor: new google.maps.Point(12, 12)
-                    }}
-                    clusterer={clusterer}
-                    zIndex={1}
-                  />
-                ))}
-              </>
-            )}
-          </MarkerClusterer>
+              }}
+            >
+              {(clusterer) => (
+                <>
+                  {stops.map((stop) => (
+                    <Marker
+                      key={`${stop.id}-${stop.desserte.split(',')[0]}`}
+                      position={{ lat: stop.lat, lng: stop.lon }}
+                      onClick={() => {
+                        console.log('Arrêt cliqué:', stop);
+                        if (selectedStop?.id === stop.id &&
+                          infoWindowPosition &&
+                          infoWindowPosition.lat === stop.lat &&
+                          infoWindowPosition.lng === stop.lon) {
+                          setSelectedStop(null);
+                          setClusterStops([]);
+                          setInfoWindowPosition(null);
+                        } else {
+                          setSelectedStop(stop);
+                          setClusterStops([]);
+                          setInfoWindowPosition({ lat: stop.lat, lng: stop.lon });
+                        }
+                      }}
+                      icon={{
+                        url: '/stop-icon.svg',
+                        scaledSize: new google.maps.Size(24, 24),
+                        anchor: new google.maps.Point(12, 12)
+                      }}
+                      clusterer={clusterer}
+                      zIndex={1}
+                    />
+                  ))}
+                </>
+              )}
+            </MarkerClusterer>
+          )}
+
+          {/* Indicateur de chargement */}
+          {(isLoadingVehicles || isLoadingLines || isLoadingStops) && (
+            <div className="absolute top-4 left-4 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-lg flex items-center gap-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+              <span className="text-sm text-gray-700 dark:text-gray-300">
+                {isLoadingVehicles && 'Chargement des véhicules...'}
+                {isLoadingLines && 'Chargement des lignes...'}
+                {isLoadingStops && 'Chargement des arrêts...'}
+              </span>
+            </div>
+          )}
 
           {selectedVehicle && (
             <InfoWindow
