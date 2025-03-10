@@ -1,6 +1,6 @@
 'use client';
 
-import { GrandLyonLine, GrandLyonStop, tclService, Vehicle } from '@/services/tcl';
+import { GrandLyonLine, GrandLyonStop, NextPassage, tclService, Vehicle } from '@/services/tcl';
 import { GoogleMap, InfoWindow, LoadScript, Marker, MarkerClusterer, Polyline } from '@react-google-maps/api';
 import { useTheme } from 'next-themes';
 import Image from 'next/image';
@@ -36,6 +36,7 @@ export default function Home() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [lines, setLines] = useState<GrandLyonLine[]>([]);
   const [stops, setStops] = useState<GrandLyonStop[]>([]);
+  const [nextPassages, setNextPassages] = useState<NextPassage[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   //const [selectedLine, setSelectedLine] = useState<GrandLyonLine | null>(null);
   const [selectedStop, setSelectedStop] = useState<GrandLyonStop | null>(null);
@@ -63,8 +64,13 @@ export default function Home() {
         setIsLoadingVehicles(false);
         setIsLoadingLines(false);
 
-        const stopsData = await tclService.getStops(linesData);
+        const [stopsData, nextPassagesData] = await Promise.all([
+          tclService.getStops(linesData),
+          tclService.getNextPassages(linesData)
+        ]);
+
         setStops(stopsData);
+        setNextPassages(nextPassagesData);
         setIsLoadingStops(false);
       } catch (error) {
         console.error('Erreur lors de la récupération des données:', error);
@@ -411,6 +417,41 @@ export default function Home() {
                           <span className="text-sm">Non accessible PMR</span>
                         </div>
                       )}
+                    </div>
+
+                    {/* Prochains passages */}
+                    <div className="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700">
+                      <h4 className="font-medium mb-2">Prochains passages</h4>
+                      {tclService.getNextPassagesForStop(selectedStop.id, nextPassages).map((passage, index) => {
+                        const lineInfo = lines.find(l => l.code_ligne === passage.ligne);
+                        if (!lineInfo) return null;
+
+                        return (
+                          <div key={`${passage.id}-${index}`} className="flex items-start gap-2 mb-2 last:mb-0">
+                            <Image
+                              src={getLineLogoUrl(lineInfo)}
+                              alt={`Logo ligne ${lineInfo.ligne}`}
+                              width={16}
+                              height={16}
+                              className="mt-1"
+                            />
+                            <div className="flex-1">
+                              <div className="font-medium">{lineInfo.nom_trace}</div>
+                              <div className="text-sm text-gray-600 dark:text-gray-400">
+                                Direction {passage.direction === 'A' ? lineInfo.nom_destination : lineInfo.nom_origine}
+                              </div>
+                              <div className="text-sm">
+                                <span className={passage.type === 'E' ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}>
+                                  {passage.delaipassage} min
+                                </span>
+                                <span className="text-gray-500 dark:text-gray-500 text-xs ml-2">
+                                  ({new Date(passage.heurepassage).toLocaleTimeString()})
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </>
                 )}

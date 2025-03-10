@@ -83,6 +83,16 @@ export interface Vehicle {
   direction: string;
 }
 
+export interface NextPassage {
+  id: string;
+  ligne: string;
+  direction: string;
+  delaipassage: number;
+  type: 'E' | 'T';
+  heurepassage: string;
+  idarretdestination: number;
+}
+
 const METRO_LINES_API_URL = '/api/grandlyon/fr/datapusher/ws/rdata/tcl_sytral.tcllignemf_2_0_0/all.json?maxfeatures=-1&start=1';
 const METRO_GEO_API_URL = '/api/grandlyon/geoserver/sytral/ows?SERVICE=WFS&VERSION=2.0.0&request=GetFeature&typename=sytral:tcl_sytral.tcllignemf_2_0_0&outputFormat=application/json&SRSNAME=EPSG:4171&startIndex=0&sortBy=gid';
 
@@ -90,6 +100,8 @@ const TRAM_LINES_API_URL = '/api/grandlyon/fr/datapusher/ws/rdata/tcl_sytral.tcl
 const TRAM_GEO_API_URL = '/api/grandlyon/geoserver/sytral/ows?SERVICE=WFS&VERSION=2.0.0&request=GetFeature&typename=sytral:tcl_sytral.tcllignetram_2_0_0&outputFormat=application/json&SRSNAME=EPSG:4171&startIndex=0&sortBy=gid';
 
 const STOPS_API_URL = '/api/grandlyon/fr/datapusher/ws/rdata/tcl_sytral.tclarret/all.json?maxfeatures=-1&start=1';
+
+const NEXT_PASSAGES_API_URL = '/api/grandlyon/fr/datapusher/ws/rdata/tcl_sytral.tclpassagearret/all.json?maxfeatures=-1&start=1&filename=prochains-passages-reseau-transports-commun-lyonnais-rhonexpress-disponibilites-temps-reel';
 
 const convertRGBToHex = (rgb: string): string => {
   try {
@@ -129,6 +141,28 @@ const processLines = (lines: GrandLyonLine[], features: GrandLyonGeoFeature[]): 
   }).filter((line): line is GrandLyonLine => line !== null);
 
   return result;
+};
+
+// Cache pour les prochains passages
+let nextPassagesCache: NextPassage[] = [];
+let lastNextPassagesUpdate = 0;
+const CACHE_DURATION = 30000; // 30 secondes
+
+// Fonction utilitaire pour créer l'en-tête d'authentification Basic
+const createBasicAuthHeader = () => {
+  const username = process.env.NEXT_PUBLIC_GRANDLYON_LOGIN;
+  const password = process.env.NEXT_PUBLIC_GRANDLYON_PASSWORD;
+
+  if (!username || !password) {
+    console.error('Identifiants GrandLyon manquants dans les variables d\'environnement');
+    return {};
+  }
+
+  const auth = Buffer.from(`${username}:${password}`).toString('base64');
+
+  return {
+    'Authorization': `Basic ${auth}`
+  };
 };
 
 export const tclService = {
@@ -193,5 +227,66 @@ export const tclService = {
       console.error('Erreur lors de la récupération des arrêts:', error);
       return [];
     }
+  },
+
+  async getNextPassages(availableLines: GrandLyonLine[]): Promise<NextPassage[]> {
+    try {
+      const now = Date.now();
+
+      // Si le cache est valide, on le retourne
+      if (now - lastNextPassagesUpdate < CACHE_DURATION) {
+        console.log('Utilisation du cache des prochains passages:', {
+          nombrePassages: nextPassagesCache.length,
+          derniereMiseAJour: new Date(lastNextPassagesUpdate).toLocaleTimeString(),
+          passages: nextPassagesCache
+        });
+        return nextPassagesCache;
+      }
+
+      // On récupère les codes de lignes disponibles
+      const lineCodes = availableLines.map(line => line.code_ligne);
+
+      // On construit l'URL avec le filtre sur les lignes
+      const passagesUrl = `${NEXT_PASSAGES_API_URL}&ligne__in=${lineCodes.join(',')}`;
+
+      const response = await axios.get<{ values: NextPassage[] }>(passagesUrl, {
+        headers: {
+          ...createBasicAuthHeader(),
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.data.values || !Array.isArray(response.data.values)) {
+        console.debug('Format de réponse invalide pour les prochains passages:', response.data);
+        return nextPassagesCache;
+      }
+
+      // Mettre à jour le cache
+      nextPassagesCache = response.data.values;
+      lastNextPassagesUpdate = now;
+
+      console.log('Nouvelles données des prochains passages:', {
+        request: passagesUrl,
+        nombreTotal: response.data.values.length,
+        lignesDisponibles: lineCodes,
+        passages: response.data.values
+      });
+
+      return response.data.values;
+    } catch (error) {
+      // On log l'erreur en debug pour ne pas polluer la console en production
+      console.debug('Erreur lors de la récupération des prochains passages:', error);
+      // On retourne le cache existant sans perturber l'utilisateur
+      return nextPassagesCache;
+    }
+  },
+
+  // Fonction utilitaire pour obtenir les prochains passages d'un arrêt
+  getNextPassagesForStop(stopId: number, nextPassages: NextPassage[]): NextPassage[] {
+    return nextPassages
+      .filter(passage => passage.idarretdestination === stopId)
+      .sort((a, b) => a.delaipassage - b.delaipassage)
+      .slice(0, 2); // On ne garde que les 2 prochains passages
   }
 }; 
